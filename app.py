@@ -25,6 +25,11 @@ def fetch_understat_xg_data():
     
     return pd.DataFrame(team_stats)
 
+@app.route('/')
+def home():
+    """Root route to check if the server is running."""
+    return jsonify({"message": "Backend is running!"})
+
 @app.route('/teams', methods=['GET'])
 def get_teams():
     """Endpoint to return a list of teams."""
@@ -54,4 +59,3 @@ import os
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))  # Get PORT from environment
     app.run(debug=True, host="0.0.0.0", port=port)  # Bind to 0.0.0.0
-
