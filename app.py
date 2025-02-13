@@ -36,7 +36,7 @@ def get_teams():
     df = fetch_understat_xg_data()
     return jsonify(df['Team'].tolist())
 
-@app.route('/predict', methods=['POST'])
+@app.route('/predict/', methods=['POST'])
 def predict():
     """Endpoint to predict match scores."""
     data = request.json
