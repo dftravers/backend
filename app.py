@@ -85,17 +85,30 @@ def predict_goals(home_team_name, away_team_name, data):
         'Predicted Goals (Away)': away_expected_goals
     }
 
+def superbru_prediction(home_goals, away_goals):
+    """Generate a more human-friendly SuperBru prediction."""
+    if home_goals > away_goals:
+        return "Home Win"
+    elif away_goals > home_goals:
+        return "Away Win"
+    else:
+        return "Draw"
+
 def full_match_prediction(home_team_name, away_team_name):
     """Wrapper to fetch data, predict goals, and determine the best guess."""
     df = fetch_understat_xg_data()
     goals = predict_goals(home_team_name, away_team_name, df)
 
+    rounded_home_goals = round(goals['Predicted Goals (Home)'], 2)
+    rounded_away_goals = round(goals['Predicted Goals (Away)'], 2)
+    best_guess_score = f"{round(goals['Predicted Goals (Home)'])}-{round(goals['Predicted Goals (Away)'])}"
+    superbru_best_pick = superbru_prediction(rounded_home_goals, rounded_away_goals)
+
     return {
-        'Home Team': goals['Home Team'],
-        'Away Team': goals['Away Team'],
-        'Predicted Goals (Home)': round(goals['Predicted Goals (Home)'], 2),
-        'Predicted Goals (Away)': round(goals['Predicted Goals (Away)'], 2),
-        'Best Guess Score': f"{round(goals['Predicted Goals (Home)'])}-{round(goals['Predicted Goals (Away)'])}"
+        'Home Predicted Goals': rounded_home_goals,
+        'Away Predicted Goals': rounded_away_goals,
+        'Most Likely Score': best_guess_score,
+        'Best SuperBru Prediction': superbru_best_pick
     }
 
 @app.route('/')
