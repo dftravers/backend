@@ -1,3 +1,4 @@
+import os
 import requests
 import pandas as pd
 import json
@@ -11,6 +12,11 @@ logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)
+
+# ✅ Add a root route to prevent 404 errors
+@app.route("/")
+def home():
+    return "Welcome to the Football Prediction API!"
 
 def fetch_understat_xg_data():
     """Fetch xG data from Understat and calculate averages for each team."""
@@ -101,19 +107,6 @@ def most_likely_score(home_team_name, away_team_name, data):
         'Probability': round(max_probability, 4)
     }
 
-def calculate_superbru_points(guess_home, guess_away, actual_home, actual_away):
-    """Calculate Superbru points for a given guess and actual scoreline."""
-    if guess_home == actual_home and guess_away == actual_away:
-        return 3  # Exact match
-
-    guess_result = "H" if guess_home > guess_away else "A" if guess_home < guess_away else "D"
-    actual_result = "H" if actual_home > actual_away else "A" if actual_home < actual_away else "D"
-    
-    result_points = 1 if guess_result == actual_result else 0
-    close_points = 1 if abs(guess_home - actual_home) <= 1 and abs(guess_away - actual_away) <= 1 else 0
-    
-    return result_points + close_points
-
 def best_superbru_prediction(home_team_name, away_team_name, data):
     """Find the best Superbru prediction by maximizing expected points."""
     result = predict_goals(home_team_name, away_team_name, data)
@@ -136,8 +129,9 @@ def best_superbru_prediction(home_team_name, away_team_name, data):
     for guess_home in range(max_goals + 1):
         for guess_away in range(max_goals + 1):
             expected_points = sum(
-                calculate_superbru_points(guess_home, guess_away, row['Actual Home Goals'], row['Actual Away Goals'])
-                * row['Probability']
+                poisson.pmf(row['Actual Home Goals'], home_expected_goals) *
+                poisson.pmf(row['Actual Away Goals'], away_expected_goals) *
+                (3 if (guess_home == row['Actual Home Goals'] and guess_away == row['Actual Away Goals']) else 1)
                 for _, row in prob_df.iterrows()
             )
 
@@ -152,26 +146,6 @@ def best_superbru_prediction(home_team_name, away_team_name, data):
         'Expected Points': round(max_expected_points, 2)
     }
 
-def full_match_prediction(home_team_name, away_team_name):
-    """Wrapper function that fetches data and returns all predictions."""
-    df = fetch_understat_xg_data()
-
-    goals = predict_goals(home_team_name, away_team_name, df)
-    superbru = best_superbru_prediction(home_team_name, away_team_name, df)
-    likely_score = most_likely_score(home_team_name, away_team_name, df)
-
-    logging.debug(f"Full Prediction Output: {goals}, {superbru}, {likely_score}")
-
-    return {
-        'Home Team': goals['Home Team'],
-        'Away Team': goals['Away Team'],
-        'Predicted Goals (Home)': round(goals['Predicted Goals (Home)'], 2),
-        'Predicted Goals (Away)': round(goals['Predicted Goals (Away)'], 2),
-        'Most Likely Score': likely_score['Most Likely Score'],
-        'Best Guess Score': superbru['Best Guess Score'],
-        'Expected Points': superbru['Expected Points']
-    }
-
 @app.route("/predict", methods=["POST"])
 def predict():
     data = request.json
@@ -179,5 +153,7 @@ def predict():
     away_team = data.get("team2")
     return jsonify(full_match_prediction(home_team, away_team))
 
+# ✅ Use environment variable for port & run in production mode
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Get PORT from environment, default 5000
+    app.run(host="0.0.0.0", port=port, debug=False)
