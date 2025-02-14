@@ -2,7 +2,15 @@ import requests
 import pandas as pd
 import json
 import re
+import logging
 from scipy.stats import poisson
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+logging.basicConfig(level=logging.DEBUG)
+
+app = Flask(__name__)
+CORS(app)
 
 def fetch_understat_xg_data():
     """Fetch xG data from Understat and calculate averages for each team."""
@@ -75,7 +83,7 @@ def most_likely_score(home_team_name, away_team_name, data):
     home_expected_goals = result['Predicted Goals (Home)']
     away_expected_goals = result['Predicted Goals (Away)']
 
-    max_goals = 6  # Limit search space
+    max_goals = 6
     max_probability = 0
     best_score = (0, 0)
 
@@ -90,18 +98,18 @@ def most_likely_score(home_team_name, away_team_name, data):
         'Home Team': home_team_name,
         'Away Team': away_team_name,
         'Most Likely Score': f"{best_score[0]}-{best_score[1]}",
-        'Probability': round(max_probability, 4)  # Debugging purpose
+        'Probability': round(max_probability, 4)
     }
 
 def calculate_superbru_points(guess_home, guess_away, actual_home, actual_away):
     """Calculate Superbru points for a given guess and actual scoreline."""
     if guess_home == actual_home and guess_away == actual_away:
-        return 3
-    
+        return 3  # Exact match
+
     guess_result = "H" if guess_home > guess_away else "A" if guess_home < guess_away else "D"
     actual_result = "H" if actual_home > actual_away else "A" if actual_home < actual_away else "D"
-    result_points = 1 if guess_result == actual_result else 0
     
+    result_points = 1 if guess_result == actual_result else 0
     close_points = 1 if abs(guess_home - actual_home) <= 1 and abs(guess_away - actual_away) <= 1 else 0
     
     return result_points + close_points
@@ -152,6 +160,8 @@ def full_match_prediction(home_team_name, away_team_name):
     superbru = best_superbru_prediction(home_team_name, away_team_name, df)
     likely_score = most_likely_score(home_team_name, away_team_name, df)
 
+    logging.debug(f"Full Prediction Output: {goals}, {superbru}, {likely_score}")
+
     return {
         'Home Team': goals['Home Team'],
         'Away Team': goals['Away Team'],
@@ -162,5 +172,12 @@ def full_match_prediction(home_team_name, away_team_name):
         'Expected Points': superbru['Expected Points']
     }
 
-# Example usage:
-print(full_match_prediction("Aston Villa", "Arsenal"))
+@app.route("/predict", methods=["POST"])
+def predict():
+    data = request.json
+    home_team = data.get("team1")
+    away_team = data.get("team2")
+    return jsonify(full_match_prediction(home_team, away_team))
+
+if __name__ == "__main__":
+    app.run(debug=True)
