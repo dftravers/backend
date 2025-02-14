@@ -102,14 +102,14 @@ def full_match_prediction(home_team_name, away_team_name):
     rounded_home_goals = round(goals['Predicted Goals (Home)'], 2)
     rounded_away_goals = round(goals['Predicted Goals (Away)'], 2)
     best_guess_score = f"{round(goals['Predicted Goals (Home)'])}-{round(goals['Predicted Goals (Away)'])}"
-    superbru_best_pick = superbru_prediction(rounded_home_goals, rounded_away_goals)
 
     return {
         'Home Predicted Goals': rounded_home_goals,
         'Away Predicted Goals': rounded_away_goals,
         'Most Likely Score': best_guess_score,
-        'Best SuperBru Prediction': superbru_best_pick
+        'Best SuperBru Prediction': best_guess_score  # ✅ Now same as Best Guess Score
     }
+
 
 @app.route('/')
 def home():
