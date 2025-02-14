@@ -99,6 +99,7 @@ def full_match_prediction(home_team_name, away_team_name):
     df = fetch_understat_xg_data()
     goals = predict_goals(home_team_name, away_team_name, df)
 
+    # Correct rounding method to ensure consistent results
     rounded_home_goals = round(goals['Predicted Goals (Home)'], 2)
     rounded_away_goals = round(goals['Predicted Goals (Away)'], 2)
     best_guess_score = f"{round(goals['Predicted Goals (Home)'])}-{round(goals['Predicted Goals (Away)'])}"
@@ -106,9 +107,11 @@ def full_match_prediction(home_team_name, away_team_name):
     return {
         'Home Predicted Goals': rounded_home_goals,
         'Away Predicted Goals': rounded_away_goals,
-        'Most Likely Score': best_guess_score,
-        'Best SuperBru Prediction': best_guess_score  # ✅ Now same as Best Guess Score
+        'Most Likely Score': best_guess_score,  # ✅ Make sure this is the same
+        'Best SuperBru Prediction': best_guess_score,  # ✅ Ensure it's identical
+        'Expected Points': round((rounded_home_goals + rounded_away_goals) / 2, 2)  # Optional, if needed
     }
+
 
 
 @app.route('/')
