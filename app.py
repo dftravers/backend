@@ -14,7 +14,6 @@ logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Add a root route to verify the API is running
 @app.route("/")
 def home():
     return "Welcome to the Football Prediction API!"
@@ -33,7 +32,6 @@ def fetch_understat_xg_data():
         
         json_data = json.loads(raw_data.group(1).encode('utf-8').decode('unicode_escape'))
 
-        # Process team data
         team_stats = []
         for team_id, team_info in json_data.items():
             home_matches = [match for match in team_info['history'] if match['h_a'] == 'h']
@@ -61,7 +59,7 @@ def fetch_understat_xg_data():
 
     except Exception as e:
         logging.error(f"Error fetching xG data: {str(e)}")
-        return None  # ✅ Prevents crashes if data fetch fails
+        return None
 
 def predict_goals(home_team_name, away_team_name, data):
     """Predict the number of goals for each team using xG and xGA."""
@@ -89,24 +87,18 @@ def predict_goals(home_team_name, away_team_name, data):
         'Predicted Goals (Away)': round(away_expected_goals, 2)
     }
 
-def most_likely_score(home_team_name, away_team_name, data):
-    """Find the most probable scoreline based on Poisson probabilities."""
-    result = predict_goals(home_team_name, away_team_name, data)
-    home_expected_goals = result['Predicted Goals (Home)']
-    away_expected_goals = result['Predicted Goals (Away)']
+def calculate_superbru_points(guess_home, guess_away, actual_home, actual_away):
+    """Calculate Superbru points for a given guess and actual scoreline."""
+    if guess_home == actual_home and guess_away == actual_away:
+        return 3
 
-    max_goals = 6
-    max_probability = 0
-    best_score = (0, 0)
+    guess_result = "H" if guess_home > guess_away else "A" if guess_home < guess_away else "D"
+    actual_result = "H" if actual_home > actual_away else "A" if actual_home < actual_away else "D"
+    result_points = 1 if guess_result == actual_result else 0
 
-    for actual_home in range(max_goals + 1):
-        for actual_away in range(max_goals + 1):
-            prob = poisson.pmf(actual_home, home_expected_goals) * poisson.pmf(actual_away, away_expected_goals)
-            if prob > max_probability:
-                max_probability = prob
-                best_score = (actual_home, actual_away)
+    close_points = 1 if abs(guess_home - actual_home) <= 1 and abs(guess_away - actual_away) <= 1 else 0
 
-    return {"Most Likely Score": f"{best_score[0]}-{best_score[1]}"}
+    return result_points + close_points
 
 def best_superbru_prediction(home_team_name, away_team_name, data):
     """Find the best Superbru prediction by maximizing expected points."""
@@ -126,7 +118,7 @@ def best_superbru_prediction(home_team_name, away_team_name, data):
                 max_expected_points = expected_points
                 best_guess = (guess_home, guess_away)
 
-    return {"Best Guess Score": f"{best_guess[0]}-{best_guess[1]}", "Expected Points": round(max_expected_points, 2)}
+    return {"Best Superbru Prediction": f"{best_guess[0]}-{best_guess[1]}", "Expected Points": round(max_expected_points, 2)}
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -157,13 +149,11 @@ def predict():
 def full_match_prediction(home_team_name, away_team_name, df):
     """Fetch all predictions and return a response."""
     goals = predict_goals(home_team_name, away_team_name, df)
-    likely_score = most_likely_score(home_team_name, away_team_name, df)
-    best_guess = best_superbru_prediction(home_team_name, away_team_name, df)
+    superbru_prediction = best_superbru_prediction(home_team_name, away_team_name, df)
 
     return {
         **goals,
-        **likely_score,
-        **best_guess
+        **superbru_prediction
     }
 
 if __name__ == "__main__":
