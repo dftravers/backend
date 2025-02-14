@@ -139,14 +139,17 @@ def full_match_prediction(home_team_name, away_team_name):
 
     goals = predict_goals(home_team_name, away_team_name, df)
     likely_score = most_likely_score(home_team_name, away_team_name, df)
+    best_guess = best_superbru_prediction(home_team_name, away_team_name, df)  # ✅ Fix: Ensure this function is called
 
     return {
         "Home Team": goals["Home Team"],
         "Away Team": goals["Away Team"],
         "Predicted Goals (Home)": round(goals["Predicted Goals (Home)"], 2),
         "Predicted Goals (Away)": round(goals["Predicted Goals (Away)"], 2),
-        "Most Likely Score": likely_score["Most Likely Score"]
+        "Most Likely Score": likely_score["Most Likely Score"],
+        "Best Guess Score": best_guess["Best Guess Score"]  # ✅ Fix: Ensure "Best Guess Score" is included
     }
+
 
 # ✅ Ensure correct port binding for Render
 if __name__ == "__main__":
