@@ -19,19 +19,28 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.json
+    try:
+        data = request.get_json()  # ✅ Ensure JSON parsing works
 
-    # ✅ Added error handling for missing data
-    if not data or "team1" not in data or "team2" not in data:
-        return jsonify({"error": "Both team1 and team2 are required"}), 400
+        # ✅ Validate request data
+        if not data or "team1" not in data or "team2" not in data:
+            return jsonify({"error": "Both 'team1' and 'team2' are required"}), 400
 
-    home_team = data["team1"]
-    away_team = data["team2"]
+        home_team = data["team1"]
+        away_team = data["team2"]
 
-    if home_team == away_team:
-        return jsonify({"error": "Teams must be different"}), 400
+        if home_team == away_team:
+            return jsonify({"error": "Teams must be different"}), 400
 
-    return jsonify(full_match_prediction(home_team, away_team))
+        # ✅ Ensure function is called correctly
+        prediction_result = full_match_prediction(home_team, away_team)
+
+        return jsonify(prediction_result)
+
+    except Exception as e:
+        logging.error(f"Error in /predict: {str(e)}")
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+
 
 def full_match_prediction(home_team_name, away_team_name):
     """Wrapper function that fetches data and returns all predictions."""
