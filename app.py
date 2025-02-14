@@ -8,7 +8,7 @@ from scipy.stats import poisson
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# ✅ Enable logging for debugging
+# Enable logging for debugging
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
@@ -79,17 +79,15 @@ def predict_goals(home_team_name, away_team_name, data):
     )
 
     return {
-        'Home Team': home_team_name,
-        'Away Team': away_team_name,
         'Predicted Goals (Home)': round(home_expected_goals, 2),
         'Predicted Goals (Away)': round(away_expected_goals, 2)
     }
 
 def best_superbru_prediction(home_team_name, away_team_name, data):
-    """Find the best Superbru prediction by maximizing expected points."""
-    result = predict_goals(home_team_name, away_team_name, data)
-    home_expected_goals = result['Predicted Goals (Home)']
-    away_expected_goals = result['Predicted Goals (Away)']
+    """Determine the best guess score using Poisson probabilities."""
+    goals = predict_goals(home_team_name, away_team_name, data)
+    home_expected_goals = goals['Predicted Goals (Home)']
+    away_expected_goals = goals['Predicted Goals (Away)']
 
     max_goals = 6
     best_guess = (0, 0)
@@ -98,13 +96,24 @@ def best_superbru_prediction(home_team_name, away_team_name, data):
     for guess_home in range(max_goals + 1):
         for guess_away in range(max_goals + 1):
             expected_points = poisson.pmf(guess_home, home_expected_goals) * poisson.pmf(guess_away, away_expected_goals)
-
             if expected_points > max_expected_points:
                 max_expected_points = expected_points
                 best_guess = (guess_home, guess_away)
 
+    # Format the best guess as a score string
+    return f"{best_guess[0]}-{best_guess[1]}"
+
+def full_match_prediction(home_team_name, away_team_name, df):
+    """Combine goal predictions and score predictions into one response."""
+    goals = predict_goals(home_team_name, away_team_name, df)
+    best_guess = best_superbru_prediction(home_team_name, away_team_name, df)
+    # Most likely score based on rounding the expected goals
+    most_likely_score = f"{round(goals['Predicted Goals (Home)'])}-{round(goals['Predicted Goals (Away)'])}"
+
     return {
-        "Best Superbru Prediction": f"{best_guess[0]}-{best_guess[1]}"
+        **goals,
+        "Most Likely Score": most_likely_score,
+        "Best Guess Score": best_guess
     }
 
 @app.route("/predict", methods=["POST"])
@@ -126,22 +135,11 @@ def predict():
             return jsonify({"error": "Failed to fetch xG data"}), 500
 
         prediction_result = full_match_prediction(home_team, away_team, df)
-
         return jsonify(prediction_result)
 
     except Exception as e:
         logging.error(f"Error in /predict: {str(e)}")
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
-
-def full_match_prediction(home_team_name, away_team_name, df):
-    """Fetch all predictions and return a response."""
-    goals = predict_goals(home_team_name, away_team_name, df)
-    superbru_prediction = best_superbru_prediction(home_team_name, away_team_name, df)
-
-    return {
-        **goals,
-        **superbru_prediction
-    }
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
