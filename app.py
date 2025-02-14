@@ -6,20 +6,33 @@ import json
 import re
 import os
 from scipy.stats import poisson
+import logging
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend requests
+
+# ✅ Updated CORS settings to only allow requests from your frontend
+CORS(app, resources={r"/*": {"origins": ["https://dftravers.github.io", "https://www.dtravers.com"]}})
+
+# ✅ Set up logging for debugging (useful for Render logs)
+logging.basicConfig(level=logging.DEBUG)
 
 def fetch_understat_xg_data():
     """Fetch xG data from Understat and calculate averages for each team."""
     url = "https://understat.com/league/EPL"
-    response = requests.get(url)
-    response.raise_for_status()
+    
+    try:
+        response = requests.get(url)
+        logging.debug(f"Understat request status: {response.status_code}")
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error fetching data from Understat: {e}")
+        raise ValueError("Failed to fetch xG data from Understat")
 
     raw_data = re.search(r"var teamsData = JSON.parse\('(.*?)'\);", response.text)
     if not raw_data:
+        logging.error("Understat page structure changed or blocked request.")
         raise ValueError("Could not locate the teamsData variable in the page.")
-    
+
     json_data = json.loads(raw_data.group(1).encode('utf-8').decode('unicode_escape'))
 
     team_stats = []
@@ -94,6 +107,8 @@ def home():
 def predict():
     """Predict match score."""
     data = request.get_json()
+    logging.debug(f"Received request data: {data}")
+
     home_team = data.get('team1')
     away_team = data.get('team2')
 
@@ -103,6 +118,7 @@ def predict():
     try:
         prediction_result = full_match_prediction(home_team, away_team)
     except Exception as e:
+        logging.error(f"Prediction error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     return jsonify(prediction_result)
