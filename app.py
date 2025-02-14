@@ -19,7 +19,7 @@ CORS(app)
 def home():
     return "Welcome to the Football Prediction API!"
 
-# ✅ Define the missing function: fetch_understat_xg_data()
+# ✅ Define function: fetch_understat_xg_data()
 def fetch_understat_xg_data():
     """Fetch xG data from Understat and calculate averages for each team."""
     url = "https://understat.com/league/EPL"
@@ -109,6 +109,46 @@ def most_likely_score(home_team_name, away_team_name, data):
         'Probability': round(max_probability, 4)
     }
 
+# ✅ Fix: Define `best_superbru_prediction()`
+def best_superbru_prediction(home_team_name, away_team_name, data):
+    """Find the best Superbru prediction by maximizing expected points."""
+    result = predict_goals(home_team_name, away_team_name, data)
+    home_expected_goals = result['Predicted Goals (Home)']
+    away_expected_goals = result['Predicted Goals (Away)']
+
+    max_goals = 6
+    probabilities = []
+
+    for actual_home in range(max_goals + 1):
+        for actual_away in range(max_goals + 1):
+            prob = poisson.pmf(actual_home, home_expected_goals) * poisson.pmf(actual_away, away_expected_goals)
+            probabilities.append({'Actual Home Goals': actual_home, 'Actual Away Goals': actual_away, 'Probability': prob})
+
+    prob_df = pd.DataFrame(probabilities)
+
+    max_expected_points = float('-inf')
+    best_guess = (0, 0)
+
+    for guess_home in range(max_goals + 1):
+        for guess_away in range(max_goals + 1):
+            expected_points = sum(
+                poisson.pmf(row['Actual Home Goals'], home_expected_goals) *
+                poisson.pmf(row['Actual Away Goals'], away_expected_goals) *
+                (3 if (guess_home == row['Actual Home Goals'] and guess_away == row['Actual Away Goals']) else 1)
+                for _, row in prob_df.iterrows()
+            )
+
+            if expected_points > max_expected_points:
+                max_expected_points = expected_points
+                best_guess = (guess_home, guess_away)
+
+    return {
+        'Home Team': home_team_name,
+        'Away Team': away_team_name,
+        'Best Guess Score': f"{best_guess[0]}-{best_guess[1]}",
+        'Expected Points': round(max_expected_points, 2)
+    }
+
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
@@ -139,7 +179,7 @@ def full_match_prediction(home_team_name, away_team_name):
 
     goals = predict_goals(home_team_name, away_team_name, df)
     likely_score = most_likely_score(home_team_name, away_team_name, df)
-    best_guess = best_superbru_prediction(home_team_name, away_team_name, df)  # ✅ Fix: Ensure this function is called
+    best_guess = best_superbru_prediction(home_team_name, away_team_name, df)  # ✅ Now properly defined
 
     return {
         "Home Team": goals["Home Team"],
@@ -147,11 +187,10 @@ def full_match_prediction(home_team_name, away_team_name):
         "Predicted Goals (Home)": round(goals["Predicted Goals (Home)"], 2),
         "Predicted Goals (Away)": round(goals["Predicted Goals (Away)"], 2),
         "Most Likely Score": likely_score["Most Likely Score"],
-        "Best Guess Score": best_guess["Best Guess Score"]  # ✅ Fix: Ensure "Best Guess Score" is included
+        "Best Guess Score": best_guess["Best Guess Score"]
     }
 
-
-# ✅ Ensure correct port binding for Render
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
+
