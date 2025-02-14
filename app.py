@@ -72,64 +72,17 @@ def predict_goals(home_team_name, away_team_name, data):
         'Predicted Goals (Away)': away_expected_goals
     }
 
-def best_superbru_prediction(home_team_name, away_team_name, data):
-    """Find the best Superbru prediction by maximizing expected points."""
-    result = predict_goals(home_team_name, away_team_name, data)
-    home_expected_goals = result['Predicted Goals (Home)']
-    away_expected_goals = result['Predicted Goals (Away)']
-
-    max_goals = 6
-    probabilities = []
-    
-    for actual_home_goals in range(max_goals + 1):
-        for actual_away_goals in range(max_goals + 1):
-            home_prob = poisson.pmf(actual_home_goals, home_expected_goals)
-            away_prob = poisson.pmf(actual_away_goals, away_expected_goals)
-            joint_prob = home_prob * away_prob
-            probabilities.append({
-                'Actual Home Goals': actual_home_goals,
-                'Actual Away Goals': actual_away_goals,
-                'Probability': joint_prob
-            })
-
-    prob_df = pd.DataFrame(probabilities)
-
-    max_expected_points = float('-inf')
-    best_guess = (0, 0)
-    for guess_home_goals in range(max_goals + 1):
-        for guess_away_goals in range(max_goals + 1):
-            expected_points = 0
-            for _, row in prob_df.iterrows():
-                actual_home = row['Actual Home Goals']
-                actual_away = row['Actual Away Goals']
-                probability = row['Probability']
-                
-                expected_points += probability  # Simpler logic for now
-            
-            if expected_points > max_expected_points:
-                max_expected_points = expected_points
-                best_guess = (guess_home_goals, guess_away_goals)
-    
-    return {
-        'Home Team': home_team_name,
-        'Away Team': away_team_name,
-        'Best Guess Score': f"{best_guess[0]}-{best_guess[1]}",
-        'Expected Points': max_expected_points
-    }
-
 def full_match_prediction(home_team_name, away_team_name):
     """Wrapper to fetch data, predict goals, and determine the best guess."""
     df = fetch_understat_xg_data()
     goals = predict_goals(home_team_name, away_team_name, df)
-    superbru = best_superbru_prediction(home_team_name, away_team_name, df)
 
     return {
         'Home Team': goals['Home Team'],
         'Away Team': goals['Away Team'],
         'Predicted Goals (Home)': round(goals['Predicted Goals (Home)'], 2),
         'Predicted Goals (Away)': round(goals['Predicted Goals (Away)'], 2),
-        'Best Guess Score': superbru['Best Guess Score'],
-        'Expected Points': round(superbru['Expected Points'], 2)
+        'Best Guess Score': f"{round(goals['Predicted Goals (Home)'])}-{round(goals['Predicted Goals (Away)'])}"
     }
 
 @app.route('/')
@@ -137,7 +90,7 @@ def home():
     """Check if the backend is running."""
     return jsonify({"message": "Backend is running!"})
 
-@app.route('/predict', methods=['POST'])
+@app.route('/predict', methods=['POST'])  # ✅ POST only
 def predict():
     """Predict match score."""
     data = request.get_json()
