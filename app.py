@@ -1,11 +1,13 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import requests
 import pandas as pd
 import json
 import re
-from scipy.stats import poisson
+import os
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for frontend requests
 
 def fetch_understat_xg_data():
     """Fetch xG data from Understat and calculate averages for each team."""
@@ -36,48 +38,20 @@ def get_teams():
     df = fetch_understat_xg_data()
     return jsonify(df['Team'].tolist())
 
-@app.route('/predict/', methods=['POST'])
+@app.route('/predict', methods=['POST'])  # Removed the trailing slash issue
 def predict():
-    """Endpoint to predict match scores."""
+    """Predict match score."""
     data = request.json
-    home_team = data.get('home_team')
-    away_team = data.get('away_team')
+    home_team = data.get('team1')  # Ensure this matches frontend's request
+    away_team = data.get('team2')
 
     if not home_team or not away_team:
         return jsonify({"error": "Both teams must be selected"}), 400
 
-    return jsonify({
-        "Home Team": home_team,
-        "Away Team": away_team,
-        "Predicted Goals (Home)": round(1.5, 2),
-        "Predicted Goals (Away)": round(1.2, 2),
-        "Best Guess Score": "1-1"
-    })
+    predicted_score = f"{home_team} 2 - 1 {away_team}"  # Dummy score, replace with actual model
 
-import os
+    return jsonify({'prediction': predicted_score})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))  # Get PORT from environment
     app.run(debug=True, host="0.0.0.0", port=port)  # Bind to 0.0.0.0
-
-
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    data = request.get_json()
-    team1 = data.get('team1')
-    team2 = data.get('team2')
-
-    # Dummy response (replace with your actual model prediction)
-    predicted_score = f"{team1} 2 - 1 {team2}"
-    
-    return jsonify({'prediction': predicted_score})
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
