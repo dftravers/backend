@@ -83,8 +83,24 @@ def predict_goals(home_team_name, away_team_name, data):
         'Predicted Goals (Away)': round(away_expected_goals, 2)
     }
 
+def calculate_superbru_points(guess_home, guess_away, actual_home, actual_away):
+    """Calculate Superbru points for a given guessed and actual score."""
+    if guess_home == actual_home and guess_away == actual_away:
+        return 3  # Exact prediction
+
+    # Determine result type (Home win, Away win, Draw)
+    guess_result = "H" if guess_home > guess_away else "A" if guess_home < guess_away else "D"
+    actual_result = "H" if actual_home > actual_away else "A" if actual_home < actual_away else "D"
+
+    result_points = 1 if guess_result == actual_result else 0
+
+    # Close prediction condition
+    close_points = 1 if abs(guess_home - actual_home) <= 1 and abs(guess_away - actual_away) <= 1 else 0
+
+    return result_points + close_points
+
 def best_superbru_prediction(home_team_name, away_team_name, data):
-    """Determine the best guess score using Poisson probabilities."""
+    """Determine the best SuperBru prediction using expected SuperBru points."""
     goals = predict_goals(home_team_name, away_team_name, data)
     home_expected_goals = goals['Predicted Goals (Home)']
     away_expected_goals = goals['Predicted Goals (Away)']
@@ -95,19 +111,32 @@ def best_superbru_prediction(home_team_name, away_team_name, data):
 
     for guess_home in range(max_goals + 1):
         for guess_away in range(max_goals + 1):
-            expected_points = poisson.pmf(guess_home, home_expected_goals) * poisson.pmf(guess_away, away_expected_goals)
+            expected_points = 0  # Reset expected points for each guess
+
+            for actual_home in range(max_goals + 1):
+                for actual_away in range(max_goals + 1):
+                    # Compute probability of actual score occurring
+                    home_prob = poisson.pmf(actual_home, home_expected_goals)
+                    away_prob = poisson.pmf(actual_away, away_expected_goals)
+                    joint_prob = home_prob * away_prob  # Joint probability
+
+                    # Compute SuperBru points for this guess vs actual result
+                    points = calculate_superbru_points(guess_home, guess_away, actual_home, actual_away)
+
+                    # Accumulate expected points based on probability
+                    expected_points += points * joint_prob
+
+            # Update best guess if this score has a higher expected SuperBru points
             if expected_points > max_expected_points:
                 max_expected_points = expected_points
                 best_guess = (guess_home, guess_away)
 
-    # Format the best guess as a score string
     return f"{best_guess[0]}-{best_guess[1]}"
 
 def full_match_prediction(home_team_name, away_team_name, df):
     """Combine goal predictions and score predictions into one response."""
     goals = predict_goals(home_team_name, away_team_name, df)
     best_guess = best_superbru_prediction(home_team_name, away_team_name, df)
-    # Most likely score based on rounding the expected goals
     most_likely_score = f"{round(goals['Predicted Goals (Home)'])}-{round(goals['Predicted Goals (Away)'])}"
 
     return {
