@@ -113,7 +113,7 @@ def full_match_prediction(home_team_name, away_team_name, df):
     return {
         **goals,
         "Most Likely Score": most_likely_score,
-        "Best Guess Score": best_guess
+        "Best SuperBru Prediction": best_guess
     }
 
 @app.route("/predict", methods=["POST"])
