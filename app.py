@@ -60,7 +60,7 @@ def fetch_understat_xg_data():
         return None
 
 def predict_goals(home_team_name, away_team_name, data):
-    """Predict the number of goals for each team using xG and xGA."""
+    """Predict goals for each team using xG and xGA, and compute the most likely score."""
     avg_xGA_away_per_game = data['xGA_away'].sum() / data['Away_Games_Played'].sum()
     avg_xGA_home_per_game = data['xGA_home'].sum() / data['Home_Games_Played'].sum()
 
@@ -78,9 +78,25 @@ def predict_goals(home_team_name, away_team_name, data):
         / avg_xGA_home_per_game
     )
 
+    # Calculate the most likely score using Poisson probabilities.
+    max_probability = 0
+    most_likely_score = "0-0"
+    # Consider possible scores from 0 to 5 goals for each team.
+    for home_goals in range(6):
+        for away_goals in range(6):
+            prob = poisson.pmf(home_goals, home_expected_goals) * poisson.pmf(away_goals, away_expected_goals)
+            if prob > max_probability:
+                max_probability = prob
+                most_likely_score = f"{home_goals}-{away_goals}"
+
+    # For now, use the most likely score as the best SuperBru prediction.
+    best_prediction = most_likely_score
+
     return {
         'Predicted Goals (Home)': round(home_expected_goals, 2),
-        'Predicted Goals (Away)': round(away_expected_goals, 2)
+        'Predicted Goals (Away)': round(away_expected_goals, 2),
+        'Most Likely Score': most_likely_score,
+        'Best SuperBru Prediction': best_prediction,
     }
 
 @app.route("/predict", methods=["POST"])
