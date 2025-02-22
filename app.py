@@ -31,27 +31,82 @@ def fetch_understat_xg_data():
         
         json_data = json.loads(raw_data.group(1).encode('utf-8').decode('unicode_escape'))
 
-        return json_data  # Returning raw data as it was originally
+        team_stats = []
+        for team_id, team_info in json_data.items():
+            home_matches = [match for match in team_info['history'] if match['h_a'] == 'h']
+            away_matches = [match for match in team_info['history'] if match['h_a'] == 'a']
+
+            team_stats.append({
+                'Team': team_info['title'],
+                'Home_Games_Played': len(home_matches),
+                'xG_home': sum(float(match['xG']) for match in home_matches),
+                'xGA_home': sum(float(match['xGA']) for match in home_matches),
+                'Away_Games_Played': len(away_matches),
+                'xG_away': sum(float(match['xG']) for match in away_matches),
+                'xGA_away': sum(float(match['xGA']) for match in away_matches),
+            })
+
+        df = pd.DataFrame(team_stats)
+
+        df['Avg_xG_home'] = df['xG_home'] / df['Home_Games_Played'].replace(0, 1)
+        df['Avg_xGA_home'] = df['xGA_home'] / df['Home_Games_Played'].replace(0, 1)
+        df['Avg_xG_away'] = df['xG_away'] / df['Away_Games_Played'].replace(0, 1)
+        df['Avg_xGA_away'] = df['xGA_away'] / df['Away_Games_Played'].replace(0, 1)
+
+        return df
 
     except Exception as e:
         logging.error(f"Error fetching xG data: {str(e)}")
         return None
 
+def predict_goals(home_team_name, away_team_name, data):
+    """Predict the number of goals for each team using xG and xGA."""
+    avg_xGA_away_per_game = data['xGA_away'].sum() / data['Away_Games_Played'].sum()
+    avg_xGA_home_per_game = data['xGA_home'].sum() / data['Home_Games_Played'].sum()
+
+    home_team = data[data['Team'] == home_team_name].iloc[0]
+    away_team = data[data['Team'] == away_team_name].iloc[0]
+
+    home_expected_goals = (
+        home_team['Avg_xG_home']
+        * away_team['Avg_xGA_away']
+        / avg_xGA_away_per_game
+    )
+    away_expected_goals = (
+        away_team['Avg_xG_away']
+        * home_team['Avg_xGA_home']
+        / avg_xGA_home_per_game
+    )
+
+    return {
+        'Predicted Goals (Home)': round(home_expected_goals, 2),
+        'Predicted Goals (Away)': round(away_expected_goals, 2)
+    }
+
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.get_json()
+    try:
+        data = request.get_json()
 
-    if not data or "team1" not in data or "team2" not in data:
-        return jsonify({"error": "Both 'team1' and 'team2' are required"}), 400
+        if not data or "team1" not in data or "team2" not in data:
+            return jsonify({"error": "Both 'team1' and 'team2' are required"}), 400
 
-    home_team = data["team1"]
-    away_team = data["team2"]
+        home_team = data["team1"]
+        away_team = data["team2"]
 
-    if home_team == away_team:
-        return jsonify({"error": "Teams must be different"}), 400
+        if home_team == away_team:
+            return jsonify({"error": "Teams must be different"}), 400
 
-    response_data = fetch_understat_xg_data()
-    return jsonify(response_data)  # This was the original way data was returned
+        df = fetch_understat_xg_data()
+        if df is None:
+            return jsonify({"error": "Failed to fetch xG data"}), 500
+
+        prediction_result = predict_goals(home_team, away_team, df)
+        return jsonify(prediction_result)
+
+    except Exception as e:
+        logging.error(f"Error in /predict: {str(e)}")
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
