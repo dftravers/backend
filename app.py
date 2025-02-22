@@ -7,6 +7,7 @@ import logging
 from scipy.stats import poisson
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from datetime import datetime
 
 # Enable logging for debugging
 logging.basicConfig(level=logging.DEBUG)
@@ -44,7 +45,7 @@ def fetch_understat_xg_data():
                 latest_team_match = max(all_match_dates)  # Get the latest match date
                 if latest_match_date is None or latest_team_match > latest_match_date:
                     latest_match_date = latest_team_match  # Update global latest match date
-            
+
             team_stats.append({
                 'Team': team_info['title'],
                 'Home_Games_Played': len(home_matches),
@@ -62,7 +63,13 @@ def fetch_understat_xg_data():
         df['Avg_xG_away'] = df['xG_away'] / df['Away_Games_Played'].replace(0, 1)
         df['Avg_xGA_away'] = df['xGA_away'] / df['Away_Games_Played'].replace(0, 1)
 
-        return df, latest_match_date  # Return the dataset and last match date
+        # Convert latest match date to readable format
+        if latest_match_date:
+            last_updated = datetime.strptime(latest_match_date, "%Y-%m-%d %H:%M:%S").strftime("%B %d, %Y")
+        else:
+            last_updated = "Unknown"
+
+        return df, last_updated  # Return the dataset and last update date
 
     except Exception as e:
         logging.error(f"Error fetching xG data: {str(e)}")
@@ -86,9 +93,12 @@ def predict():
         if df is None or last_updated is None:
             return jsonify({"error": "Failed to fetch xG data"}), 500
 
+        home_xg = round(df[df['Team'] == home_team]['Avg_xG_home'].values[0], 2)
+        away_xg = round(df[df['Team'] == away_team]['Avg_xG_away'].values[0], 2)
+
         prediction_result = {
-            "Predicted Goals (Home)": round(df[df['Team'] == home_team]['Avg_xG_home'].values[0], 2),
-            "Predicted Goals (Away)": round(df[df['Team'] == away_team]['Avg_xG_away'].values[0], 2),
+            "Predicted Goals (Home)": home_xg,
+            "Predicted Goals (Away)": away_xg,
             "Last Updated": last_updated  # Include the last update timestamp
         }
 
