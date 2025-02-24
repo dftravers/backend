@@ -80,45 +80,37 @@ def predict_goals(home_team_name, away_team_name, data):
 
     return home_expected_goals, away_expected_goals
 
-def calculate_superbru_points(guess_home, guess_away, actual_home, actual_away):
-    """Calculate Superbru points for a given guess and actual scoreline."""
-    if guess_home == actual_home and guess_away == actual_away:
-        return 3.0  # Exact prediction
-
-    guess_result = "H" if guess_home > guess_away else "A" if guess_home < guess_away else "D"
-    actual_result = "H" if actual_home > actual_away else "A" if actual_home < actual_away else "D"
-
-    if abs(guess_home - actual_home) <= 1 and abs(guess_away - actual_away) <= 1:
-        if guess_result == actual_result:
-            return 1.5  # Close prediction points
-    
-    if guess_result == actual_result:
-        return 1.0  # Correct result only
-
-    return 0.0  # No points
-
 def best_superbru_prediction(home_team_name, away_team_name, data):
-    """Find the best Superbru prediction by maximizing expected points."""
+    """Find the best Superbru prediction and the most likely score based on probabilities."""
     home_expected_goals, away_expected_goals = predict_goals(home_team_name, away_team_name, data)
 
     max_goals = 6
     probabilities = []
+    
+    most_likely_score = "0-0"
+    max_prob = 0
     
     for actual_home_goals in range(max_goals + 1):
         for actual_away_goals in range(max_goals + 1):
             home_prob = poisson.pmf(actual_home_goals, home_expected_goals)
             away_prob = poisson.pmf(actual_away_goals, away_expected_goals)
             joint_prob = home_prob * away_prob
+            
             probabilities.append({
                 'Actual Home Goals': actual_home_goals,
                 'Actual Away Goals': actual_away_goals,
                 'Probability': joint_prob
             })
 
+            if joint_prob > max_prob:
+                max_prob = joint_prob
+                most_likely_score = f"{actual_home_goals}-{actual_away_goals}"
+
     prob_df = pd.DataFrame(probabilities)
 
     max_expected_points = float('-inf')
     best_guess = (0, 0)
+    
     for guess_home_goals in range(max_goals + 1):
         for guess_away_goals in range(max_goals + 1):
             expected_points = 0
@@ -137,7 +129,24 @@ def best_superbru_prediction(home_team_name, away_team_name, data):
                 max_expected_points = expected_points
                 best_guess = (guess_home_goals, guess_away_goals)
     
-    return f"{best_guess[0]}-{best_guess[1]}"
+    return f"{best_guess[0]}-{best_guess[1]}", most_likely_score
+
+def calculate_superbru_points(guess_home, guess_away, actual_home, actual_away):
+    """Calculate Superbru points for a given guess and actual scoreline."""
+    if guess_home == actual_home and guess_away == actual_away:
+        return 3.0  # Exact prediction
+
+    guess_result = "H" if guess_home > guess_away else "A" if guess_home < guess_away else "D"
+    actual_result = "H" if actual_home > actual_away else "A" if actual_home < actual_away else "D"
+
+    if abs(guess_home - actual_home) <= 1 and abs(guess_away - actual_away) <= 1:
+        if guess_result == actual_result:
+            return 1.5  # Close prediction points
+    
+    if guess_result == actual_result:
+        return 1.0  # Correct result only
+
+    return 0.0  # No points
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -157,13 +166,14 @@ def predict():
             return jsonify({"error": "Failed to fetch xG data"}), 500
 
         home_expected_goals, away_expected_goals = predict_goals(home_team, away_team, df)
-        best_guess_score = best_superbru_prediction(home_team, away_team, df)
+        best_guess_score, most_likely_score = best_superbru_prediction(home_team, away_team, df)
 
         return jsonify({
             "Home Team": home_team,
             "Away Team": away_team,
             "Predicted Goals (Home)": round(home_expected_goals, 2),
             "Predicted Goals (Away)": round(away_expected_goals, 2),
+            "Most Likely Score": most_likely_score,
             "Best SuperBru Prediction": best_guess_score
         })
 
