@@ -7,12 +7,45 @@ import logging
 from scipy.stats import poisson
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from functools import lru_cache
+from datetime import datetime, timedelta
+import psutil
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+import pickle
 
 # Enable logging for debugging
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)
+
+CACHE_FILE = 'xg_cache.pkl'
+CACHE_EXPIRY_HOURS = 3
+
+def get_persistent_xg_data():
+    """Load xG data from cache if <3h old, else scrape and update cache."""
+    now = datetime.now()
+    # Check if cache file exists and is fresh
+    if os.path.exists(CACHE_FILE):
+        mtime = datetime.fromtimestamp(os.path.getmtime(CACHE_FILE))
+        if now - mtime < timedelta(hours=CACHE_EXPIRY_HOURS):
+            try:
+                with open(CACHE_FILE, 'rb') as f:
+                    df = pickle.load(f)
+                return df
+            except Exception as e:
+                logging.error(f"Error loading cache: {e}")
+                # Fall through to re-scrape
+    # Scrape new data and cache it
+    df = fetch_understat_xg_data()
+    if df is not None:
+        try:
+            with open(CACHE_FILE, 'wb') as f:
+                pickle.dump(df, f)
+        except Exception as e:
+            logging.error(f"Error saving cache: {e}")
+    return df
 
 @app.route("/")
 def home():
@@ -21,12 +54,36 @@ def home():
 def fetch_understat_xg_data():
     """Fetch xG data from Understat and calculate averages for each team."""
     try:
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[500, 502, 503, 504]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
         url = "https://understat.com/league/EPL"
-        response = requests.get(url)
+        logging.info(f"Starting fetch attempt at {datetime.now()}")
+        
+        # Reduce timeout to 10 seconds
+        response = session.get(url, headers=headers, timeout=10)
+        logging.info(f"Response received. Status code: {response.status_code}")
+        logging.info(f"Response time: {response.elapsed.total_seconds()} seconds")
+        
+        # Add response headers to logs
+        logging.info(f"Response headers: {dict(response.headers)}")
+        
         response.raise_for_status()
 
         raw_data = re.search(r"var teamsData = JSON.parse\('(.*?)'\);", response.text)
         if not raw_data:
+            logging.error("Data pattern not found in response")
+            logging.debug(f"Response content: {response.text[:500]}...")  # Log first 500 chars
             raise ValueError("Could not locate the teamsData variable in the page.")
         
         json_data = json.loads(raw_data.group(1).encode('utf-8').decode('unicode_escape'))
@@ -55,8 +112,15 @@ def fetch_understat_xg_data():
 
         return df
 
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Network error when fetching xG data: {str(e)}")
+        return None
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON parsing error: {str(e)}")
+        return None
     except Exception as e:
-        logging.error(f"Error fetching xG data: {str(e)}")
+        logging.error(f"Unexpected error fetching xG data: {str(e)}")
+        logging.error(f"Error type: {type(e)}")
         return None
 
 def predict_goals(home_team_name, away_team_name, data):
@@ -148,9 +212,14 @@ def calculate_superbru_points(guess_home, guess_away, actual_home, actual_away):
 
     return 0.0  # No points
 
+def log_memory_usage():
+    process = psutil.Process(os.getpid())
+    logging.info(f"Memory usage: {process.memory_info().rss / 1024 / 1024} MB")
+
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
+        log_memory_usage()
         data = request.get_json()
         if not data or "team1" not in data or "team2" not in data:
             return jsonify({"error": "Both 'team1' and 'team2' are required"}), 400
@@ -161,9 +230,9 @@ def predict():
         if home_team == away_team:
             return jsonify({"error": "Teams must be different"}), 400
 
-        df = fetch_understat_xg_data()
+        df = get_persistent_xg_data()
         if df is None:
-            return jsonify({"error": "Failed to fetch xG data"}), 500
+            return jsonify({"error": "Failed to fetch xG data. Please try again later."}), 503
 
         home_expected_goals, away_expected_goals = predict_goals(home_team, away_team, df)
         best_guess_score, most_likely_score = best_superbru_prediction(home_team, away_team, df)
